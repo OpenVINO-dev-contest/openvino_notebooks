@@ -45,13 +45,13 @@ class OpenVINOLLM(LLM):
             pipe = openvino_genai.LLMPipeline("./openvino_model_dir", "CPU")
             config = openvino_genai.GenerationConfig()
             ov = OpenVINOPipeline.from_model_path(
-                pipe=pipe,
+                ov_pipe=pipe,
                 config=config,
             )
 
     """
 
-    pipe: Any = None
+    ov_pipe: Any = None
     tokenizer: Any = None
     config: Any = None
     streamer: Any = None
@@ -204,15 +204,15 @@ class OpenVINOLLM(LLM):
                     return False
                 return super().put(token_id)
 
-        pipe = openvino_genai.LLMPipeline(model_path, device, **kwargs)
+        ov_pipe = openvino_genai.LLMPipeline(model_path, device, **kwargs)
 
-        config = pipe.get_generation_config()
+        config = ov_pipe.get_generation_config()
         if tokenizer is None:
-            tokenizer = pipe.get_tokenizer()
+            tokenizer = ov_pipe.get_tokenizer()
         streamer = ChunkStreamer(tokenizer)
 
         return cls(
-            pipe=pipe,
+            ov_pipe=ov_pipe,
             tokenizer=tokenizer,
             config=config,
             streamer=streamer,
@@ -239,7 +239,7 @@ class OpenVINOLLM(LLM):
             input_ids = tokens["input_ids"]
             attention_mask = tokens["attention_mask"]
             prompt = openvino_genai.TokenizedInputs(ov.Tensor(input_ids), ov.Tensor(attention_mask))
-        output = self.pipe.generate(prompt, self.config, **kwargs)
+        output = self.ov_pipe.generate(prompt, self.config, **kwargs)
         if not isinstance(self.tokenizer, openvino_genai.Tokenizer):
             output = self.tokenizer.batch_decode(output.tokens, skip_special_tokens=True)[0]
         return output
@@ -274,7 +274,7 @@ class OpenVINOLLM(LLM):
             genration function for single thread
             """
             self.streamer.reset()
-            self.pipe.generate(prompt, self.config, self.streamer, **kwargs)
+            self.ov_pipe.generate(prompt, self.config, self.streamer, **kwargs)
             stream_complete.set()
             self.streamer.end()
 
