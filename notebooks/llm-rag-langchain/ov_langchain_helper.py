@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import queue
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import LLM
@@ -21,6 +21,23 @@ from langchain_core.outputs import (
     ChatResult,
     LLMResult,
 )
+
+from pathlib import Path
+
+import numpy as np
+from langchain_core.callbacks import Callbacks
+from langchain_core.documents import Document
+from langchain_core.documents.compressor import BaseDocumentCompressor
+from langchain_core.embeddings import Embeddings
+from pydantic import BaseModel, ConfigDict, Field
+
+DEFAULT_QUERY_INSTRUCTION = (
+    "Represent the question for retrieving supporting documents: "
+)
+DEFAULT_QUERY_BGE_INSTRUCTION_EN = (
+    "Represent this question for searching relevant passages: "
+)
+DEFAULT_QUERY_BGE_INSTRUCTION_ZH = "为这个句子生成表示以用于检索相关文章："
 
 DEFAULT_SYSTEM_PROMPT = """You are a helpful, respectful, and honest assistant."""
 
@@ -69,7 +86,10 @@ class OpenVINOLLM(LLM):
             import openvino_genai
 
         except ImportError:
-            raise ImportError("Could not import OpenVINO GenAI package. " "Please install it with `pip install openvino-genai`.")
+            raise ImportError(
+                "Could not import OpenVINO GenAI package. "
+                "Please install it with `pip install openvino-genai`."
+            )
 
         class IterableStreamer(openvino_genai.StreamerBase):
             """
@@ -117,7 +137,9 @@ class OpenVINOLLM(LLM):
                 Raises:
                     StopIteration: If there are no more elements in the queue.
                 """
-                value = self.text_queue.get()  # get() will be blocked until a token is available.
+                value = (
+                    self.text_queue.get()
+                )  # get() will be blocked until a token is available.
                 if value is None:
                     raise StopIteration
                 return value
@@ -152,7 +174,9 @@ class OpenVINOLLM(LLM):
                     bool: True if generation should be stopped, False otherwise.
                 """
                 self.tokens_cache.append(token_id)
-                text = self.tokenizer.decode(self.tokens_cache, skip_special_tokens=True)
+                text = self.tokenizer.decode(
+                    self.tokens_cache, skip_special_tokens=True
+                )
 
                 word = ""
                 if len(text) > self.print_len and "\n" == text[-1]:
@@ -177,7 +201,9 @@ class OpenVINOLLM(LLM):
                 Flushes residual tokens from the buffer
                 and puts a None value in the queue to signal the end.
                 """
-                text = self.tokenizer.decode(self.tokens_cache, skip_special_tokens=True)
+                text = self.tokenizer.decode(
+                    self.tokens_cache, skip_special_tokens=True
+                )
                 if len(text) > self.print_len:
                     word = text[self.print_len :]
                     self.put_word(word)
@@ -233,15 +259,24 @@ class OpenVINOLLM(LLM):
             import openvino_genai
 
         except ImportError:
-            raise ImportError("Could not import OpenVINO GenAI package. " "Please install it with `pip install openvino-genai`.")
+            raise ImportError(
+                "Could not import OpenVINO GenAI package. "
+                "Please install it with `pip install openvino-genai`."
+            )
         if not isinstance(self.tokenizer, openvino_genai.Tokenizer):
-            tokens = self.tokenizer(prompt, add_special_tokens=False, return_tensors="np")
+            tokens = self.tokenizer(
+                prompt, add_special_tokens=False, return_tensors="np"
+            )
             input_ids = tokens["input_ids"]
             attention_mask = tokens["attention_mask"]
-            prompt = openvino_genai.TokenizedInputs(ov.Tensor(input_ids), ov.Tensor(attention_mask))
+            prompt = openvino_genai.TokenizedInputs(
+                ov.Tensor(input_ids), ov.Tensor(attention_mask)
+            )
         output = self.ov_pipe.generate(prompt, self.config, **kwargs)
         if not isinstance(self.tokenizer, openvino_genai.Tokenizer):
-            output = self.tokenizer.batch_decode(output.tokens, skip_special_tokens=True)[0]
+            output = self.tokenizer.batch_decode(
+                output.tokens, skip_special_tokens=True
+            )[0]
         return output
 
     def _stream(
@@ -261,12 +296,19 @@ class OpenVINOLLM(LLM):
             import openvino_genai
 
         except ImportError:
-            raise ImportError("Could not import OpenVINO GenAI package. " "Please install it with `pip install openvino-genai`.")
+            raise ImportError(
+                "Could not import OpenVINO GenAI package. "
+                "Please install it with `pip install openvino-genai`."
+            )
         if not isinstance(self.tokenizer, openvino_genai.Tokenizer):
-            tokens = self.tokenizer(prompt, add_special_tokens=False, return_tensors="np")
+            tokens = self.tokenizer(
+                prompt, add_special_tokens=False, return_tensors="np"
+            )
             input_ids = tokens["input_ids"]
             attention_mask = tokens["attention_mask"]
-            prompt = openvino_genai.TokenizedInputs(ov.Tensor(input_ids), ov.Tensor(attention_mask))
+            prompt = openvino_genai.TokenizedInputs(
+                ov.Tensor(input_ids), ov.Tensor(attention_mask)
+            )
         stream_complete = Event()
 
         def generate_and_signal_complete() -> None:
@@ -364,7 +406,9 @@ class ChatOpenVINO(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         llm_input = self._to_chat_prompt(messages)
-        llm_result = self.llm._generate(prompts=[llm_input], stop=stop, run_manager=run_manager, **kwargs)
+        llm_result = self.llm._generate(
+            prompts=[llm_input], stop=stop, run_manager=run_manager, **kwargs
+        )
         return self._to_chat_result(llm_result)
 
     def _stream(
@@ -392,7 +436,10 @@ class ChatOpenVINO(BaseChatModel):
             import openvino_genai
 
         except ImportError:
-            raise ImportError("Could not import OpenVINO GenAI package. " "Please install it with `pip install openvino-genai`.")
+            raise ImportError(
+                "Could not import OpenVINO GenAI package. "
+                "Please install it with `pip install openvino-genai`."
+            )
         if not messages:
             raise ValueError("At least one HumanMessage must be provided!")
 
@@ -402,9 +449,13 @@ class ChatOpenVINO(BaseChatModel):
         messages_dicts = [self._to_chatml_format(m) for m in messages]
 
         return (
-            self.tokenizer.apply_chat_template(messages_dicts, add_generation_prompt=True)
+            self.tokenizer.apply_chat_template(
+                messages_dicts, add_generation_prompt=True
+            )
             if isinstance(self.tokenizer, openvino_genai.Tokenizer)
-            else self.tokenizer.apply_chat_template(messages_dicts, tokenize=False, add_generation_prompt=True)
+            else self.tokenizer.apply_chat_template(
+                messages_dicts, tokenize=False, add_generation_prompt=True
+            )
         )
 
     def _to_chatml_format(self, message: BaseMessage) -> dict:
@@ -426,11 +477,396 @@ class ChatOpenVINO(BaseChatModel):
         chat_generations = []
 
         for g in llm_result.generations[0]:
-            chat_generation = ChatGeneration(message=AIMessage(content=g.text), generation_info=g.generation_info)
+            chat_generation = ChatGeneration(
+                message=AIMessage(content=g.text), generation_info=g.generation_info
+            )
             chat_generations.append(chat_generation)
 
-        return ChatResult(generations=chat_generations, llm_output=llm_result.llm_output)
+        return ChatResult(
+            generations=chat_generations, llm_output=llm_result.llm_output
+        )
 
     @property
     def _llm_type(self) -> str:
         return "openvino-chat-wrapper"
+
+
+class OpenVINOEmbeddings(BaseModel, Embeddings):
+    """OpenVINO embedding models.
+
+    Example:
+        .. code-block:: python
+
+            from langchain_community.embeddings import OpenVINOEmbeddings
+
+            model_name = "sentence-transformers/all-mpnet-base-v2"
+            model_kwargs = {'device': 'CPU'}
+            encode_kwargs = {'normalize_embeddings': True}
+            ov = OpenVINOEmbeddings(
+                model_name_or_path=model_name,
+                model_kwargs=model_kwargs,
+                encode_kwargs=encode_kwargs
+            )
+    """
+
+    ov_model: Any = None
+    """OpenVINO model object."""
+    tokenizer: Any = None
+    """Tokenizer for embedding model."""
+    model_path: str
+    """Local model path."""
+    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    """Keyword arguments to pass to the model."""
+    encode_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    """Keyword arguments to pass when calling the `encode` method of the model."""
+    show_progress: bool = False
+    """Whether to show a progress bar."""
+
+    def __init__(self, **kwargs: Any):
+        """Initialize the sentence_transformer."""
+        super().__init__(**kwargs)
+
+        try:
+            import openvino as ov
+        except ImportError as e:
+            raise ImportError(
+                "Could not import openvino python package. "
+                "Please install it with: "
+                "pip install -U 'openvino"
+            ) from e
+
+        try:
+            import openvino_genai
+        except ImportError as e:
+            raise ImportError(
+                "Could not import openvino_genai python package. "
+                "Please install it with: "
+                "pip install -U openvino_genai"
+            ) from e
+
+        core = ov.Core()
+        self.ov_model = core.compile_model(
+            Path(self.model_path) / "openvino_model.xml", **self.model_kwargs
+        )
+        self.tokenizer = openvino_genai.Tokenizer(self.model_path)
+
+    def _text_length(self, text: Any) -> int:
+        """
+        Help function to get the length for the input text. Text can be either
+        a list of ints (which means a single text as input), or a tuple of list of ints
+        (representing several text inputs to the model).
+        """
+
+        if isinstance(text, dict):  # {key: value} case
+            return len(next(iter(text.values())))
+        elif not hasattr(text, "__len__"):  # Object has no len() method
+            return 1
+        # Empty string or list of ints
+        elif len(text) == 0 or isinstance(text[0], int):
+            return len(text)
+        else:
+            # Sum of length of individual strings
+            return sum([len(t) for t in text])
+
+    def encode(
+        self,
+        sentences: Any,
+        batch_size: int = 4,
+        show_progress_bar: bool = False,
+        mean_pooling: bool = False,
+        normalize_embeddings: bool = True,
+    ) -> Any:
+        """
+        Computes sentence embeddings.
+
+        :param sentences: the sentences to embed.
+        :param batch_size: the batch size used for the computation.
+        :param show_progress_bar: Whether to output a progress bar.
+        :param convert_to_numpy: Whether the output should be a list of numpy vectors.
+        :param convert_to_tensor: Whether the output should be one large tensor.
+        :param mean_pooling: Whether to pool returned vectors.
+        :param normalize_embeddings: Whether to normalize returned vectors.
+
+        :return: By default, a 2d numpy array with shape [num_inputs, output_dimension].
+        """
+        try:
+            import numpy as np
+        except ImportError as e:
+            raise ImportError(
+                "Unable to import numpy, please install with `pip install -U numpy`."
+            ) from e
+        try:
+            from tqdm import trange
+        except ImportError as e:
+            raise ImportError(
+                "Unable to import tqdm, please install with `pip install -U tqdm`."
+            ) from e
+
+        def run_mean_pooling(model_output: Any, attention_mask: Any) -> Any:
+            token_embeddings = model_output[
+                0
+            ]  # First element of model_output contains all token embeddings
+            input_mask_expanded = np.broadcast_to(
+                np.expand_dims(attention_mask, axis=-1), token_embeddings.size()
+            )
+            return np.sum(token_embeddings * input_mask_expanded, 1) / np.clip(
+                input_mask_expanded.sum(1), a_min=1e-9
+            )
+
+        input_was_string = False
+        if isinstance(sentences, str) or not hasattr(
+            sentences, "__len__"
+        ):  # Cast an individual sentence to a list with length 1
+            sentences = [sentences]
+            input_was_string = True
+
+        all_embeddings: Any = []
+        length_sorted_idx = np.argsort([-self._text_length(sen) for sen in sentences])
+        sentences_sorted = [sentences[idx] for idx in length_sorted_idx]
+
+        for start_index in trange(
+            0, len(sentences), batch_size, desc="Batches", disable=not show_progress_bar
+        ):
+            sentences_batch = sentences_sorted[start_index : start_index + batch_size]
+
+            length = self.ov_model.inputs[0].get_partial_shape()[1]
+            if length.is_dynamic:
+                features = self.tokenizer.encode(sentences_batch)
+            else:
+                features = self.tokenizer.encode(
+                    sentences_batch,
+                    pad_to_max_length=True,
+                    max_length=length.get_length(),
+                )
+            if "token_type_ids" in (input.any_name for input in self.ov_model.inputs):
+                token_type_ids = np.zeros(features.attention_mask.shape)
+                model_input = {
+                    "input_ids": features.input_ids,
+                    "attention_mask": features.attention_mask,
+                    "token_type_ids": token_type_ids,
+                }
+            else:
+                model_input = {
+                    "input_ids": features.input_ids,
+                    "attention_mask": features.attention_mask,
+                }
+            out_features = self.ov_model(model_input)
+            if mean_pooling:
+                embeddings = run_mean_pooling(out_features, features["attention_mask"])
+            else:
+                embeddings = out_features[0][:, 0]
+            if normalize_embeddings:
+                norm = np.linalg.norm(embeddings, ord=2, axis=1, keepdims=True)
+                embeddings = embeddings / norm
+            all_embeddings.extend(embeddings)
+
+        all_embeddings = [all_embeddings[idx] for idx in np.argsort(length_sorted_idx)]
+
+        if input_was_string:
+            all_embeddings = all_embeddings[0]
+
+        return all_embeddings
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Compute doc embeddings using a HuggingFace transformer model.
+
+        Args:
+            texts: The list of texts to embed.
+
+        Returns:
+            List of embeddings, one for each text.
+        """
+
+        texts = list(map(lambda x: x.replace("\n", " "), texts))
+        embeddings = self.encode(
+            texts, show_progress_bar=self.show_progress, **self.encode_kwargs
+        )
+
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        """Compute query embeddings using a HuggingFace transformer model.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embeddings for the text.
+        """
+        return self.embed_documents([text])[0]
+
+
+class OpenVINOBgeEmbeddings(OpenVINOEmbeddings):
+    """OpenVNO BGE embedding models.
+
+    Bge Example:
+        .. code-block:: python
+
+            from langchain_community.embeddings import OpenVINOBgeEmbeddings
+
+            model_name = "BAAI/bge-large-en-v1.5"
+            model_kwargs = {'device': 'CPU'}
+            encode_kwargs = {'normalize_embeddings': True}
+            ov = OpenVINOBgeEmbeddings(
+                model_name_or_path=model_name,
+                model_kwargs=model_kwargs,
+                encode_kwargs=encode_kwargs
+            )
+    """
+
+    query_instruction: str = DEFAULT_QUERY_BGE_INSTRUCTION_EN
+    """Instruction to use for embedding query."""
+    embed_instruction: str = ""
+    """Instruction to use for embedding document."""
+
+    def __init__(self, **kwargs: Any):
+        """Initialize the sentence_transformer."""
+        super().__init__(**kwargs)
+
+        if "-zh" in self.model_path:
+            self.query_instruction = DEFAULT_QUERY_BGE_INSTRUCTION_ZH
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Compute doc embeddings using a HuggingFace transformer model.
+
+        Args:
+            texts: The list of texts to embed.
+
+        Returns:
+            List of embeddings, one for each text.
+        """
+        texts = [self.embed_instruction + t.replace("\n", " ") for t in texts]
+        embeddings = self.encode(texts, **self.encode_kwargs)
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        """Compute query embeddings using a HuggingFace transformer model.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embeddings for the text.
+        """
+        text = text.replace("\n", " ")
+        embedding = self.encode(self.query_instruction + text, **self.encode_kwargs)
+        return embedding.tolist()
+
+
+class RerankRequest:
+    """Request for reranking."""
+
+    def __init__(self, query: Any = None, passages: Any = None):
+        self.query = query
+        self.passages = passages if passages is not None else []
+
+
+class OpenVINOReranker(BaseDocumentCompressor):
+    """
+    OpenVINO rerank models.
+    """
+
+    ov_model: Any = None
+    """OpenVINO model object."""
+    tokenizer: Any = None
+    """Tokenizer for embedding model."""
+    model_path: str
+    """Local model path."""
+    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    """Keyword arguments passed to the model."""
+    top_n: int = 4
+    """return Top n texts."""
+
+    def __init__(self, **kwargs: Any):
+        super().__init__(**kwargs)
+
+        try:
+            import openvino as ov
+        except ImportError as e:
+            raise ImportError(
+                "Could not import openvino python package. "
+                "Please install it with: "
+                "pip install -U 'openvino"
+            ) from e
+
+        try:
+            import openvino_genai
+        except ImportError as e:
+            raise ImportError(
+                "Could not import openvino_genai python package. "
+                "Please install it with: "
+                "pip install -U openvino_genai"
+            ) from e
+
+        core = ov.Core()
+        self.ov_model = core.compile_model(
+            Path(self.model_path) / "openvino_model.xml", **self.model_kwargs
+        )
+        self.tokenizer = openvino_genai.Tokenizer(self.model_path)
+
+    def rerank(self, request: Any) -> Any:
+        query = request.query
+        passages = request.passages
+
+        query_passage_pairs = [[query, passage["text"]] for passage in passages]
+        length = self.ov_model.inputs[0].get_partial_shape()[1]
+        if length.is_dynamic:
+            features = self.tokenizer.encode(query_passage_pairs)
+        else:
+            features = self.tokenizer.encode(
+                query_passage_pairs,
+                pad_to_max_length=True,
+                max_length=length.get_length(),
+            )
+        if "token_type_ids" in (input.any_name for input in self.ov_model.inputs):
+            token_type_ids = np.zeros(features.attention_mask.shape)
+            model_input = {
+                "input_ids": features.input_ids,
+                "attention_mask": features.attention_mask,
+                "token_type_ids": token_type_ids,
+            }
+        else:
+            model_input = {
+                "input_ids": features.input_ids,
+                "attention_mask": features.attention_mask,
+            }
+
+        outputs = self.ov_model(model_input)
+        if outputs[0].shape[1] > 1:
+            scores = outputs[0][:, 1]
+        else:
+            scores = outputs[0].flatten()
+
+        scores = list(1 / (1 + np.exp(-scores)))
+
+        # Combine scores with passages, including metadata
+        for score, passage in zip(scores, passages):
+            passage["score"] = score
+
+        # Sort passages based on scores
+        passages.sort(key=lambda x: x["score"], reverse=True)
+
+        return passages
+
+    def compress_documents(
+        self,
+        documents: Sequence[Document],
+        query: str,
+        callbacks: Optional[Callbacks] = None,
+    ) -> Sequence[Document]:
+        passages = [
+            {"id": i, "text": doc.page_content} for i, doc in enumerate(documents)
+        ]
+
+        rerank_request = RerankRequest(query=query, passages=passages)
+        rerank_response = self.rerank(rerank_request)[: self.top_n]
+        final_results = []
+        for r in rerank_response:
+            doc = Document(
+                page_content=r["text"],
+                metadata={"id": r["id"], "relevance_score": r["score"]},
+            )
+            final_results.append(doc)
+        return final_results
